@@ -66,7 +66,7 @@ See `SIMPLE_PHP_DEPLOYMENT.md` for detailed deployment instructions.
 
 ### Quick Deploy
 1. Upload `api.php`, `config.php`, `.htaccess` to your web server
-2. Upload `client/build/` to `client/build/` on your server
+2. Upload contents of `client/build/` to the same directory as the PHP files
 3. Configure database settings in `config.php`
 4. Done!
 

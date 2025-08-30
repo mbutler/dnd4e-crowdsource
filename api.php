@@ -39,13 +39,10 @@ $method = $_SERVER['REQUEST_METHOD'];
 // Remove query string
 $path = parse_url($path, PHP_URL_PATH);
 
-// Debug: Log the path
-error_log("Request path: " . $path);
-
 // Route the request
 if (preg_match('/^\/4e_crowdsource\/api\/tables$/', $path) && $method === 'GET') {
     // Get all tables
-    $stmt = $pdo->query('SHOW TABLES');
+    $stmt = $pdo->query("SHOW TABLES");
     $tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
     echo json_encode($tables);
     
@@ -58,40 +55,67 @@ if (preg_match('/^\/4e_crowdsource\/api\/tables$/', $path) && $method === 'GET')
     echo json_encode($structure);
     
 } elseif (preg_match('/^\/4e_crowdsource\/api\/tables\/([^\/]+)\/records$/', $path, $matches) && $method === 'GET') {
-    // Get records with pagination
+    // Get records with pagination, search, and sort
     $tableName = $matches[1];
-    $page = $_GET['page'] ?? 1;
-    $limit = $_GET['limit'] ?? 50;
-    $search = $_GET['search'] ?? '';
-    $sortBy = $_GET['sortBy'] ?? 'ID';
-    $sortOrder = $_GET['sortOrder'] ?? 'ASC';
     
-    $offset = ($page - 1) * $limit;
+    // Get query parameters
+    $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+    $limit = isset($_GET['limit']) ? max(1, min(100, intval($_GET['limit']))) : 50;
+    $search = isset($_GET['search']) ? trim($_GET['search']) : '';
+    $sortBy = isset($_GET['sortBy']) ? $_GET['sortBy'] : 'ID';
+    $sortOrder = isset($_GET['sortOrder']) ? strtoupper($_GET['sortOrder']) : 'ASC';
     
-    // Build search condition
-    $searchCondition = '';
+    // Validate sort order
+    if (!in_array($sortOrder, ['ASC', 'DESC'])) {
+        $sortOrder = 'ASC';
+    }
+    
+    // Build WHERE clause for search
+    $whereClause = '';
+    $searchParams = [];
+    
     if (!empty($search)) {
-        $searchCondition = "WHERE Name LIKE '%$search%' OR Txt LIKE '%$search%'";
+        // Get table structure to find searchable columns
+        $stmt = $pdo->prepare("DESCRIBE `$tableName`");
+        $stmt->execute();
+        $columns = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        $searchableColumns = [];
+        foreach ($columns as $column) {
+            if (in_array(strtolower($column), ['name', 'txt', 'title', 'description'])) {
+                $searchableColumns[] = "`$column` LIKE ?";
+                $searchParams[] = "%$search%";
+            }
+        }
+        
+        if (!empty($searchableColumns)) {
+            $whereClause = 'WHERE ' . implode(' OR ', $searchableColumns);
+        }
     }
     
     // Get total count
-    $countStmt = $pdo->prepare("SELECT COUNT(*) as total FROM `$tableName` $searchCondition");
-    $countStmt->execute();
-    $total = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+    $countSql = "SELECT COUNT(*) FROM `$tableName` $whereClause";
+    $stmt = $pdo->prepare($countSql);
+    $stmt->execute($searchParams);
+    $totalRecords = $stmt->fetchColumn();
+    
+    // Calculate pagination
+    $offset = ($page - 1) * $limit;
+    $totalPages = ceil($totalRecords / $limit);
     
     // Get records
-    $sql = "SELECT * FROM `$tableName` $searchCondition ORDER BY `$sortBy` $sortOrder LIMIT $limit OFFSET $offset";
+    $sql = "SELECT * FROM `$tableName` $whereClause ORDER BY `$sortBy` $sortOrder LIMIT $limit OFFSET $offset";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute();
+    $stmt->execute($searchParams);
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     echo json_encode([
         'records' => $records,
         'pagination' => [
-            'current' => (int)$page,
-            'total' => ceil($total / $limit),
-            'totalRecords' => (int)$total,
-            'limit' => (int)$limit
+            'page' => $page,
+            'limit' => $limit,
+            'totalRecords' => $totalRecords,
+            'totalPages' => $totalPages
         ]
     ]);
     
@@ -115,30 +139,86 @@ if (preg_match('/^\/4e_crowdsource\/api\/tables$/', $path) && $method === 'GET')
     // Update record
     $tableName = $matches[1];
     $id = $matches[2];
-    
+
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     if (!$input) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid JSON']);
         exit;
     }
+
+    // Get table structure to identify non-updatable columns
+    $stmt = $pdo->prepare("DESCRIBE `$tableName`");
+    $stmt->execute();
+    $columns = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Filter out non-updatable columns (primary keys, auto-increment, generated columns)
+    $updatableColumns = [];
+    foreach ($columns as $column) {
+        $fieldName = $column['Field'];
+        $isPrimaryKey = $column['Key'] === 'PRI';
+        $isAutoIncrement = strpos($column['Extra'], 'auto_increment') !== false;
+        $isGenerated = strpos($column['Extra'], 'GENERATED') !== false;
+        
+        if (!$isPrimaryKey && !$isAutoIncrement && !$isGenerated) {
+            $updatableColumns[] = $fieldName;
+        }
+    }
     
+    // Filter input to only include updatable columns
+    $filteredInput = array_intersect_key($input, array_flip($updatableColumns));
+    
+    if (empty($filteredInput)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No updatable fields provided']);
+        exit;
+    }
+
     // Build update query
-    $fields = array_keys($input);
+    $fields = array_keys($filteredInput);
     $placeholders = implode(' = ?, ', $fields) . ' = ?';
-    $values = array_values($input);
+    $values = array_values($filteredInput);
     $values[] = $id;
-    
+
     $sql = "UPDATE `$tableName` SET $placeholders WHERE ID = ?";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($values);
-    
+
     if ($stmt->rowCount() > 0) {
         // Get updated record
         $stmt = $pdo->prepare("SELECT * FROM `$tableName` WHERE ID = ?");
         $stmt->execute([$id]);
         $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Log the change
+        $log_entry = [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'user' => $_SERVER['PHP_AUTH_USER'] ?? 'unknown',
+            'action' => 'UPDATE',
+            'table' => $tableName,
+            'record_id' => $id,
+            'changes' => $filteredInput
+        ];
+        
+        $log_file = __DIR__ . '/edit_log.txt';
+        $log_line = json_encode($log_entry) . "\n";
+        
+        // Ensure log file exists and is writable
+        if (!file_exists($log_file)) {
+            file_put_contents($log_file, '');
+            chmod($log_file, 0666);
+        }
+        
+        $log_result = file_put_contents($log_file, $log_line, FILE_APPEND | LOCK_EX);
+        
+        // Debug logging if it fails
+        if ($log_result === false) {
+            error_log("Failed to write to log file: $log_file");
+            error_log("Directory writable: " . (is_writable(__DIR__) ? 'Yes' : 'No'));
+            error_log("File writable: " . (is_writable($log_file) ? 'Yes' : 'No'));
+            error_log("PHP error: " . (error_get_last()['message'] ?? 'Unknown error'));
+        }
         
         echo json_encode([
             'message' => 'Record updated successfully',
@@ -150,33 +230,22 @@ if (preg_match('/^\/4e_crowdsource\/api\/tables$/', $path) && $method === 'GET')
     }
     
 } elseif (preg_match('/^\/4e_crowdsource\/api\/tables\/([^\/]+)\/stats$/', $path, $matches) && $method === 'GET') {
-    // Get table stats
+    // Get table statistics
     $tableName = $matches[1];
     
-    $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM `$tableName`");
+    // Get total count
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM `$tableName`");
     $stmt->execute();
-    $total = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+    $totalRecords = $stmt->fetchColumn();
     
-    // Get sample names
-    $nameSample = [];
-    try {
-        $stmt = $pdo->prepare("SELECT DISTINCT Name FROM `$tableName` WHERE Name IS NOT NULL LIMIT 10");
-        $stmt->execute();
-        $nameSample = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    } catch (Exception $e) {
-        // Try ID column if Name doesn't exist
-        try {
-            $stmt = $pdo->prepare("SELECT DISTINCT ID FROM `$tableName` WHERE ID IS NOT NULL LIMIT 10");
-            $stmt->execute();
-            $nameSample = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        } catch (Exception $e2) {
-            $nameSample = [];
-        }
-    }
+    // Get sample data (first few records)
+    $stmt = $pdo->prepare("SELECT * FROM `$tableName` LIMIT 3");
+    $stmt->execute();
+    $sampleData = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     echo json_encode([
-        'totalRecords' => (int)$total,
-        'nameSample' => $nameSample
+        'totalRecords' => $totalRecords,
+        'sampleData' => $sampleData
     ]);
     
 } elseif (preg_match('/^\/4e_crowdsource\/api\/health$/', $path) && $method === 'GET') {
@@ -188,32 +257,49 @@ if (preg_match('/^\/4e_crowdsource\/api\/tables$/', $path) && $method === 'GET')
     
 } else {
     // Serve static files for React app
-    $filePath = __DIR__ . '/client/build' . $path;
+    // Check if this is a static asset (has a file extension)
+    $extension = pathinfo($path, PATHINFO_EXTENSION);
+    $staticExtensions = ['css', 'js', 'json', 'ico', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'woff', 'woff2', 'ttf', 'eot'];
     
-    if (file_exists($filePath) && is_file($filePath)) {
-        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
-        $contentTypes = [
-            'html' => 'text/html',
-            'css' => 'text/css',
-            'js' => 'application/javascript',
-            'json' => 'application/json',
-            'ico' => 'image/x-icon',
-            'png' => 'image/png',
-            'jpg' => 'image/jpeg',
-            'jpeg' => 'image/jpeg',
-            'gif' => 'image/gif',
-            'svg' => 'image/svg+xml'
-        ];
-        
-        if (isset($contentTypes[$extension])) {
-            header('Content-Type: ' . $contentTypes[$extension]);
+    if ($extension && in_array($extension, $staticExtensions)) {
+        // Try to serve the static file from the root directory
+        $staticPath = __DIR__ . $path;
+        if (file_exists($staticPath) && is_file($staticPath)) {
+            $contentTypes = [
+                'html' => 'text/html',
+                'css' => 'text/css',
+                'js' => 'application/javascript',
+                'json' => 'application/json',
+                'ico' => 'image/x-icon',
+                'png' => 'image/png',
+                'jpg' => 'image/jpeg',
+                'jpeg' => 'image/jpeg',
+                'gif' => 'image/gif',
+                'svg' => 'image/svg+xml',
+                'woff' => 'font/woff',
+                'woff2' => 'font/woff2',
+                'ttf' => 'font/ttf',
+                'eot' => 'application/vnd.ms-fontobject'
+            ];
+            
+            if (isset($contentTypes[$extension])) {
+                header('Content-Type: ' . $contentTypes[$extension]);
+            }
+            
+            readfile($staticPath);
+            exit;
         }
-        
-        readfile($filePath);
-    } else {
-        // Serve index.html for React routing
+    }
+    
+    // For all other routes, serve index.html (React will handle routing)
+    $indexPath = __DIR__ . '/index.html';
+    
+    if (file_exists($indexPath)) {
         header('Content-Type: text/html');
-        readfile(__DIR__ . '/client/build/index.html');
+        readfile($indexPath);
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'React app not found. Please build the application first.']);
     }
 }
 ?>
