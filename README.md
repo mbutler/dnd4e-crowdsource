@@ -1,235 +1,85 @@
-# D&D 4e Compendium Data Crowdsourcing Tool
+# DND4E Crowdsource Tool
 
-A modern web application for browsing, reviewing, and correcting data in the D&D 4e compendium database. Built with Node.js, Express, React, and MySQL.
+A simple web application for crowdsourcing corrections and improvements to D&D 4e compendium data.
+
+## Overview
+
+This tool provides a web interface for browsing and editing D&D 4e database records. It uses:
+- **PHP** for the backend API
+- **React** for the frontend interface
+- **MySQL** for data storage
+
+## Project Structure
+
+```
+dnd4e-crowdsource/
+├── api.php                    # Main PHP API handler
+├── config.php                 # Database configuration
+├── .htaccess                  # URL routing rules
+├── SIMPLE_PHP_DEPLOYMENT.md   # Deployment guide
+├── README.md                  # This file
+└── client/                    # React application
+    ├── build/                 # Production build (deployed)
+    ├── src/                   # React source code
+    ├── public/                # Public assets
+    ├── package.json           # React dependencies
+    ├── tailwind.config.js     # Tailwind CSS config
+    └── postcss.config.js      # PostCSS config
+```
 
 ## Features
 
-- **Dashboard Overview**: View all database tables with statistics and sample data
-- **Table Browser**: Browse records with search, sorting, and pagination
-- **Record Editor**: Edit individual records with field-specific input types
-- **Real-time Updates**: Changes are immediately reflected in the database
-- **Modern UI**: Clean, responsive interface built with Tailwind CSS
-- **Data Validation**: Proper handling of different data types (text, numbers, booleans, JSON)
+- Browse all database tables
+- View and edit individual records
+- Search and filter data
+- JSON data validation
+- Responsive design
 
-## Database Structure
+## Development
 
-The tool connects to the `4e_compendium` database which contains 21 tables:
+### Prerequisites
+- Node.js 15+
+- PHP 7.4+ with MySQL extension
+- MySQL database
 
-- **Power**: Character powers and abilities
-- **Monster**: Monster statistics and descriptions
-- **Item**: Equipment and magical items
-- **Class**: Character classes
-- **Race**: Character races
-- **Feat**: Character feats
-- **Ritual**: Magical rituals
-- **Skill**: Character skills
-- **Background**: Character backgrounds
-- **Theme**: Character themes
-- **ParagonPath**: Paragon paths
-- **EpicDestiny**: Epic destinies
-- **Deity**: Deities and divine beings
-- **Companion**: Animal companions
-- **Associate**: NPCs and allies
-- **Disease**: Diseases and afflictions
-- **Poison**: Poisons and toxins
-- **Trap**: Traps and hazards
-- **Terrain**: Terrain types
-- **Glossary**: Game terms and definitions
-- **GetFilterSelect**: Filter options
-
-## Prerequisites
-
-- Node.js (v14 or higher)
-- MySQL (v5.7 or higher)
-- D&D 4e compendium database (`4e_compendium`)
-
-## Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd dnd4e-crowdource
-   ```
-
-2. **Install backend dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Install frontend dependencies**:
+### Setup
+1. Clone the repository
+2. Install React dependencies:
    ```bash
    cd client
    npm install
-   cd ..
    ```
-
-4. **Configure database connection**:
-   - Copy `config.env` and update with your MySQL credentials:
-   ```bash
-   cp config.env.example config.env
-   ```
-   - Edit `config.env`:
-   ```
-   DB_HOST=localhost
-   DB_USER=root
-   DB_PASSWORD=your_mysql_password_here
-   DB_NAME=4e_compendium
-   PORT=5000
-   NODE_ENV=development
-   ```
-
-## Usage
-
-### Development Mode
-
-1. **Start the backend server**:
-   ```bash
-   npm run dev
-   ```
-   The server will start on `http://localhost:5000`
-
-2. **Start the frontend development server**:
-   ```bash
-   npm run client
-   ```
-   The React app will start on `http://localhost:3000`
-
-### Production Mode
-
-1. **Build the frontend**:
+3. Configure database in `config.php`
+4. Build the React app:
    ```bash
    npm run build
    ```
 
-2. **Start the production server**:
-   ```bash
-   npm start
-   ```
+### Making Changes
+1. Edit files in `client/src/`
+2. Run `npm run build` to rebuild
+3. Upload `client/build/` to your server
+
+## Deployment
+
+See `SIMPLE_PHP_DEPLOYMENT.md` for detailed deployment instructions.
+
+### Quick Deploy
+1. Upload `api.php`, `config.php`, `.htaccess` to your web server
+2. Upload `client/build/` to `client/build/` on your server
+3. Configure database settings in `config.php`
+4. Done!
 
 ## API Endpoints
 
-### Tables
-- `GET /api/tables` - Get all table names
-- `GET /api/tables/:tableName/structure` - Get table structure
-- `GET /api/tables/:tableName/stats` - Get table statistics
-
-### Records
-- `GET /api/tables/:tableName/records` - Get records with pagination, search, and sorting
-- `GET /api/tables/:tableName/records/:id` - Get a specific record
-- `PUT /api/tables/:tableName/records/:id` - Update a record
-
-### Health
-- `GET /api/health` - Health check endpoint
-
-## Usage Guide
-
-### 1. Dashboard
-- View all available tables with record counts
-- See sample entries from each table
-- Click on any table to browse its records
-
-### 2. Table View
-- Browse records with pagination (50 records per page)
-- Search by name or text content
-- Sort by any column (click column headers)
-- Click "Edit" on any record to modify it
-
-### 3. Record Editing
-- View all fields for a specific record
-- Click "Edit Record" to enable editing mode
-- Modify fields as needed:
-  - Text fields: Regular text inputs
-  - Long text: Multi-line textareas
-  - Numbers: Number inputs
-  - Booleans: Yes/No dropdowns
-  - JSON: Expandable JSON editor
-- Click "Save Changes" to update the database
-- Navigate between records with Previous/Next buttons
-
-## Data Types Handled
-
-- **Primary Keys**: Read-only, cannot be modified
-- **Text/Longtext**: Multi-line text areas for large content
-- **Integers**: Number inputs with validation
-- **Booleans**: Yes/No dropdowns
-- **JSON**: Expandable JSON editor with syntax highlighting
-- **Varchar**: Standard text inputs
-
-## Security Features
-
-- Rate limiting (100 requests per 15 minutes per IP)
-- Input validation and sanitization
-- CORS protection
-- Helmet.js security headers
-- SQL injection prevention through parameterized queries
-
-## Development
-
-### Project Structure
-```
-dnd4e-crowdource/
-├── server.js              # Express server
-├── package.json           # Backend dependencies
-├── config.env             # Environment variables
-├── client/                # React frontend
-│   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── pages/         # Page components
-│   │   ├── utils/         # Utility functions
-│   │   └── App.js         # Main app component
-│   └── package.json       # Frontend dependencies
-└── README.md
-```
-
-### Adding New Features
-
-1. **New API endpoints**: Add to `server.js`
-2. **New components**: Create in `client/src/components/`
-3. **New pages**: Create in `client/src/pages/` and add to routing
-4. **Styling**: Use Tailwind CSS classes or add custom CSS
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Database connection failed**:
-   - Check MySQL is running
-   - Verify credentials in `config.env`
-   - Ensure `4e_compendium` database exists
-
-2. **Frontend not loading**:
-   - Check if backend is running on port 5000
-   - Verify proxy setting in `client/package.json`
-
-3. **CORS errors**:
-   - Ensure backend CORS is properly configured
-   - Check if frontend is making requests to correct URL
-
-### Logs
-
-- Backend logs appear in the terminal where you run `npm run dev`
-- Frontend errors appear in browser console
-- Database errors are logged to backend console
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+- `GET /api/tables` - List all tables
+- `GET /api/tables/{table}/structure` - Get table structure
+- `GET /api/tables/{table}/records` - Get records with pagination
+- `GET /api/tables/{table}/records/{id}` - Get single record
+- `PUT /api/tables/{table}/records/{id}` - Update record
+- `GET /api/tables/{table}/stats` - Get table statistics
+- `GET /api/health` - Health check
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Support
-
-For issues or questions:
-1. Check the troubleshooting section
-2. Review the API documentation
-3. Open an issue on GitHub
-
----
-
-**Note**: This tool is designed for data correction and should be used carefully. Always backup your database before making bulk changes.
+MIT License

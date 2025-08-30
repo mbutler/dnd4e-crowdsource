@@ -168,7 +168,7 @@ const Dashboard = () => {
       <div>
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Database Tables</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {tables?.map((tableName) => {
+          {Array.isArray(tables) ? tables.map((tableName) => {
             const Icon = tableIcons[tableName] || Database;
             const colorClass = tableColors[tableName] || 'bg-gray-100 text-gray-800';
             const stats = tableStats?.[tableName];
@@ -222,7 +222,11 @@ const Dashboard = () => {
                 )}
               </Link>
             );
-          })}
+          }) : (
+            <div className="col-span-full text-center py-8">
+              <p className="text-gray-500">No tables found or error loading data</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
